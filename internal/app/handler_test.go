@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOrigUrlHandler(t *testing.T) {
+func TestOrigURLHandler(t *testing.T) {
 	config.Init()
 	type want struct {
 		code        int
@@ -57,7 +57,7 @@ func TestOrigUrlHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := chi.NewRouter()
-			r.Post("/", OrigUrlHandler)
+			r.Post("/", OrigURLHandler)
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			w := httptest.NewRecorder()
 
@@ -77,7 +77,7 @@ func TestOrigUrlHandler(t *testing.T) {
 	}
 }
 
-func TestShortUrlHandler(t *testing.T) {
+func TestShortURLHandler(t *testing.T) {
 	shortID := "SRHQaQLO"
 	originalURL := "https://practicum.yandex.ru/"
 	shortToOriginal[shortID] = originalURL
@@ -123,7 +123,7 @@ func TestShortUrlHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := chi.NewRouter()
-			r.Get("/{id}", ShortUrlHandler)
+			r.Get("/{id}", ShortURLHandler)
 			req := httptest.NewRequest(tt.method, "/"+tt.id, nil)
 
 			w := httptest.NewRecorder()

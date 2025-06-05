@@ -14,14 +14,14 @@ var cfg *Config
 
 func Init() {
 	flagRunAddr := flag.String("a", "", "http server run address")
-	flagBaseUrl := flag.String("b", "", "base url for short address")
+	flagBaseURL := flag.String("b", "", "base url for short address")
 	flag.Parse()
 
 	defaultRunAddr := "localhost:8080"
-	defaultBaseUrl := "http://localhost:8080/"
+	defaultBaseURL := "http://localhost:8080/"
 
 	runAddr := defaultRunAddr
-	baseUrl := defaultBaseUrl
+	baseURL := defaultBaseURL
 
 	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
 		runAddr = envRunAddr
@@ -29,15 +29,15 @@ func Init() {
 		runAddr = *flagRunAddr
 	}
 
-	if envBaseUrl := os.Getenv("BASE_URL"); envBaseUrl != "" {
-		baseUrl = envBaseUrl
-	} else if *flagBaseUrl != "" {
-		baseUrl = *flagBaseUrl
+	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+		baseURL = envBaseURL
+	} else if *flagBaseURL != "" {
+		baseURL = *flagBaseURL
 	}
 
 	cfg = &Config{
 		RunAddress: runAddr,
-		BaseURL:    baseUrl,
+		BaseURL:    baseURL,
 	}
 }
 

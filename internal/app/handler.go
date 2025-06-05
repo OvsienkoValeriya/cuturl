@@ -24,7 +24,7 @@ func generateShorten(n int) string {
 	return string(b)
 }
 
-func OrigUrlHandler(res http.ResponseWriter, req *http.Request) {
+func OrigURLHandler(res http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	body, err := io.ReadAll(req.Body)
 	if err != nil || len(body) == 0 {
@@ -32,13 +32,13 @@ func OrigUrlHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	origUrl := strings.TrimSpace(string(body))
-	if origUrl == "" {
+	origURL := strings.TrimSpace(string(body))
+	if origURL == "" {
 		http.Error(res, "empty url", http.StatusBadRequest)
 		return
 	}
 
-	if shortID, ok := originalToShort[origUrl]; ok {
+	if shortID, ok := originalToShort[origURL]; ok {
 		shortURL := config.Get().BaseURL + shortID
 		res.Header().Set("Content-Type", "text/plain")
 		res.WriteHeader(http.StatusCreated)
@@ -47,15 +47,15 @@ func OrigUrlHandler(res http.ResponseWriter, req *http.Request) {
 	}
 
 	shortID := generateShorten(8)
-	shortToOriginal[shortID] = origUrl
-	originalToShort[origUrl] = shortID
+	shortToOriginal[shortID] = origURL
+	originalToShort[origURL] = shortID
 
 	shortURL := config.Get().BaseURL + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
 	res.Write([]byte(shortURL))
 }
-func ShortUrlHandler(res http.ResponseWriter, req *http.Request) {
+func ShortURLHandler(res http.ResponseWriter, req *http.Request) {
 	idString := chi.URLParam(req, "id")
 	if idString == "" {
 		http.Error(res, "invalid short url", http.StatusBadRequest)

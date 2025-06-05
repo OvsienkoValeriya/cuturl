@@ -14,9 +14,9 @@ func main() {
 	cfg := config.Get()
 	r := chi.NewRouter()
 
-	r.Post("/", app.OrigUrlHandler)
+	r.Post("/", app.OrigURLHandler)
 
-	r.Get("/{id}", app.ShortUrlHandler)
+	r.Get("/{id}", app.ShortURLHandler)
 
 	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
 		panic(err)
