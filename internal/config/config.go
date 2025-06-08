@@ -42,5 +42,8 @@ func Init() {
 }
 
 func Get() *Config {
+	if cfg == nil {
+		panic("config not initialized: call config.Init() before config.Get()")
+	}
 	return cfg
 }

@@ -1,30 +1,45 @@
 package app
 
 import (
+	"crypto/rand"
 	"cuturl/internal/config"
 	"io"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 )
 
-var (
-	shortToOriginal = make(map[string]string)
-	originalToShort = make(map[string]string)
-	letters         = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-)
+type URLShortener struct {
+	shortToOriginal map[string]string
+	originalToShort map[string]string
+	letters         []rune
+	mu              sync.RWMutex
+}
 
-func generateShorten(n int) string {
+func NewURLShortener() *URLShortener {
+	return &URLShortener{
+		shortToOriginal: make(map[string]string),
+		originalToShort: make(map[string]string),
+		letters:         []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+	}
+}
+
+func (u *URLShortener) generateShorten(n int) string {
 	b := make([]rune, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(u.letters))))
+		if err != nil {
+			panic(err)
+		}
+		b[i] = u.letters[num.Int64()]
 	}
 	return string(b)
 }
 
-func OrigURLHandler(res http.ResponseWriter, req *http.Request) {
+func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	body, err := io.ReadAll(req.Body)
 	if err != nil || len(body) == 0 {
@@ -38,33 +53,43 @@ func OrigURLHandler(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if shortID, ok := originalToShort[origURL]; ok {
+	u.mu.RLock()
+	if shortID, ok := u.originalToShort[origURL]; ok {
+		u.mu.RUnlock()
 		shortURL := config.Get().BaseURL + shortID
 		res.Header().Set("Content-Type", "text/plain")
 		res.WriteHeader(http.StatusCreated)
 		res.Write([]byte(shortURL))
 		return
 	}
+	u.mu.RUnlock()
 
-	shortID := generateShorten(8)
-	shortToOriginal[shortID] = origURL
-	originalToShort[origURL] = shortID
+	shortID := u.generateShorten(8)
+
+	u.mu.Lock()
+	u.shortToOriginal[shortID] = origURL
+	u.originalToShort[origURL] = shortID
+	u.mu.Unlock()
 
 	shortURL := config.Get().BaseURL + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
 	res.Write([]byte(shortURL))
 }
-func ShortURLHandler(res http.ResponseWriter, req *http.Request) {
-	idString := chi.URLParam(req, "id")
-	if idString == "" {
+
+func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Request) {
+	id := chi.URLParam(req, "id")
+	if id == "" {
 		http.Error(res, "invalid short url", http.StatusBadRequest)
 		return
 	}
 
-	originalURL, ok := shortToOriginal[idString]
+	u.mu.RLock()
+	originalURL, ok := u.shortToOriginal[id]
+	u.mu.RUnlock()
+
 	if !ok {
-		http.Error(res, "short url not found", http.StatusBadRequest)
+		http.Error(res, "short url not found", http.StatusNotFound)
 		return
 	}
 

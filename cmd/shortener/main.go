@@ -3,22 +3,23 @@ package main
 import (
 	"cuturl/internal/app"
 	"cuturl/internal/config"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
-
 	config.Init()
 	cfg := config.Get()
+
+	u := app.NewURLShortener()
+
 	r := chi.NewRouter()
-
-	r.Post("/", app.OrigURLHandler)
-
-	r.Get("/{id}", app.ShortURLHandler)
+	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
+	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
 
 	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
-		panic(err)
+		log.Fatalf("server failed to start: %v", err)
 	}
 }
