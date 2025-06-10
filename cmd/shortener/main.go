@@ -4,16 +4,21 @@ import (
 	"cuturl/internal/app"
 	"cuturl/internal/config"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	config.Init()
 	cfg := config.Get()
 
-	log.Println("Starting server on", cfg.RunAddress)
+	logger.Info("Starting server", "address", cfg.RunAddress)
 
 	u := app.NewURLShortener()
 
