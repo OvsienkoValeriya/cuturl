@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"cuturl/internal/config"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"strings"
@@ -43,12 +44,14 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	defer req.Body.Close()
 	body, err := io.ReadAll(req.Body)
 	if err != nil || len(body) == 0 {
+		log.Println("error reading body:", err)
 		http.Error(res, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	origURL := strings.TrimSpace(string(body))
 	if origURL == "" {
+		log.Println("empty URL received")
 		http.Error(res, "empty url", http.StatusBadRequest)
 		return
 	}
@@ -74,12 +77,14 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	shortURL := config.Get().BaseURL + "/" + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
+	log.Printf("created short url: %s -> %s", shortID, origURL)
 	res.Write([]byte(shortURL))
 }
 
 func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Request) {
 	id := chi.URLParam(req, "id")
 	if id == "" {
+		log.Println("invalid short url received: missing 'id' param")
 		http.Error(res, "invalid short url", http.StatusBadRequest)
 		return
 	}
@@ -89,6 +94,7 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 	u.mu.RUnlock()
 
 	if !ok {
+		log.Println("short url not found: ")
 		http.Error(res, "short url not found", http.StatusNotFound)
 		return
 	}
