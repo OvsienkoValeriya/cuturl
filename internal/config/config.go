@@ -3,6 +3,7 @@ package config
 import (
 	"flag"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -37,7 +38,7 @@ func Init() {
 
 	cfg = &Config{
 		RunAddress: runAddr,
-		BaseURL:    baseURL,
+		BaseURL:    strings.TrimRight(baseURL, "/"),
 	}
 }
 

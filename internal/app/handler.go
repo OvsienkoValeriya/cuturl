@@ -56,7 +56,7 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	u.mu.RLock()
 	if shortID, ok := u.originalToShort[origURL]; ok {
 		u.mu.RUnlock()
-		shortURL := config.Get().BaseURL + shortID
+		shortURL := config.Get().BaseURL + "/" + shortID
 		res.Header().Set("Content-Type", "text/plain")
 		res.WriteHeader(http.StatusCreated)
 		res.Write([]byte(shortURL))
@@ -71,7 +71,7 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	u.originalToShort[origURL] = shortID
 	u.mu.Unlock()
 
-	shortURL := config.Get().BaseURL + shortID
+	shortURL := config.Get().BaseURL + "/" + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
 	res.Write([]byte(shortURL))

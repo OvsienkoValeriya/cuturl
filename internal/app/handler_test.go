@@ -36,7 +36,7 @@ func TestOrigURLHandler(t *testing.T) {
 				contentType: "text/plain",
 				checkBody: func(t *testing.T, body string) {
 					assert.True(t, strings.HasPrefix(body, config.Get().BaseURL))
-					assert.Equal(t, 8, len(strings.TrimPrefix(body, config.Get().BaseURL)))
+					assert.Equal(t, 9, len(strings.TrimPrefix(body, config.Get().BaseURL)))
 				},
 			},
 		},
