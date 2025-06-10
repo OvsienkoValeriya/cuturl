@@ -13,6 +13,8 @@ func main() {
 	config.Init()
 	cfg := config.Get()
 
+	log.Println("Starting server on", cfg.RunAddress)
+
 	u := app.NewURLShortener()
 
 	r := chi.NewRouter()

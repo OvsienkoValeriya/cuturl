@@ -94,7 +94,7 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 	u.mu.RUnlock()
 
 	if !ok {
-		log.Println("short url not found: ")
+		log.Println("short url not found")
 		http.Error(res, "short url not found", http.StatusNotFound)
 		return
 	}

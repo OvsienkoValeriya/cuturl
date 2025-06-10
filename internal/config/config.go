@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"log"
 	"os"
 	"strings"
 )
@@ -46,5 +47,6 @@ func Get() *Config {
 	if cfg == nil {
 		panic("config not initialized: call config.Init() before config.Get()")
 	}
+	log.Println("Config initiated")
 	return cfg
 }
