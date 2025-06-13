@@ -3,6 +3,7 @@ package main
 import (
 	"cuturl/internal/app"
 	"cuturl/internal/config"
+	"cuturl/internal/middleware"
 	"log"
 	"net/http"
 
@@ -19,6 +20,7 @@ func main() {
 	u := app.NewURLShortener()
 
 	r := chi.NewRouter()
+	r.Use(middleware.LoggingWiddleware)
 	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
 	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
 
