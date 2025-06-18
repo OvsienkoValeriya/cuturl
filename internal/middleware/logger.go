@@ -35,37 +35,32 @@ func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.responseData.statusCode = statusCode
 }
 
-func LoggingWiddleware(h http.Handler) http.Handler {
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		panic(err)
+func LoggingMiddleware(sugar *zap.SugaredLogger) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			responseData := &responseData{
+				statusCode: 0,
+				size:       0,
+			}
+
+			lrw := &loggingResponseWriter{
+				ResponseWriter: w,
+				responseData:   responseData,
+			}
+
+			h.ServeHTTP(lrw, r)
+
+			duration := time.Since(start)
+
+			sugar.Infow("Request received",
+				"uri", r.RequestURI,
+				"method", r.Method,
+				"duration", duration,
+				"status_code", responseData.statusCode,
+				"size", responseData.size,
+			)
+		})
 	}
-	sugar = *logger.Sugar()
-	logFn := func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		responseData := &responseData{
-			statusCode: 0,
-			size:       0,
-		}
-
-		lrw := &loggingResponseWriter{
-			ResponseWriter: w,
-			responseData:   responseData,
-		}
-
-		h.ServeHTTP(lrw, r)
-
-		duration := time.Since(start)
-
-		sugar.Infow("Request received",
-			"uri", r.RequestURI,
-			"method", r.Method,
-			"duration", duration,
-			"status_code", responseData.statusCode,
-			"size", responseData.size,
-		)
-	}
-
-	return http.HandlerFunc(logFn)
 }
