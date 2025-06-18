@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 type Config struct {
@@ -12,35 +13,40 @@ type Config struct {
 	BaseURL    string
 }
 
-var cfg *Config
+var (
+	cfg  *Config
+	once sync.Once
+)
 
 func Init() {
-	flagRunAddr := flag.String("a", "", "http server run address")
-	flagBaseURL := flag.String("b", "", "base url for short address")
-	flag.Parse()
+	once.Do(func() {
+		flagRunAddr := flag.String("a", "", "http server run address")
+		flagBaseURL := flag.String("b", "", "base url for short address")
+		flag.Parse()
 
-	defaultRunAddr := "localhost:8080"
-	defaultBaseURL := "http://localhost:8080/"
+		defaultRunAddr := "localhost:8080"
+		defaultBaseURL := "http://localhost:8080/"
 
-	runAddr := defaultRunAddr
-	baseURL := defaultBaseURL
+		runAddr := defaultRunAddr
+		baseURL := defaultBaseURL
 
-	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
-		runAddr = envRunAddr
-	} else if *flagRunAddr != "" {
-		runAddr = *flagRunAddr
-	}
+		if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
+			runAddr = envRunAddr
+		} else if *flagRunAddr != "" {
+			runAddr = *flagRunAddr
+		}
 
-	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
-		baseURL = envBaseURL
-	} else if *flagBaseURL != "" {
-		baseURL = *flagBaseURL
-	}
+		if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+			baseURL = envBaseURL
+		} else if *flagBaseURL != "" {
+			baseURL = *flagBaseURL
+		}
 
-	cfg = &Config{
-		RunAddress: runAddr,
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-	}
+		cfg = &Config{
+			RunAddress: runAddr,
+			BaseURL:    strings.TrimRight(baseURL, "/"),
+		}
+	})
 }
 
 func Get() *Config {

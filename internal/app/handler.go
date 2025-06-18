@@ -4,13 +4,13 @@ import (
 	"crypto/rand"
 	"cuturl/internal/config"
 	"io"
-	"log"
 	"math/big"
 	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 type URLShortener struct {
@@ -18,13 +18,15 @@ type URLShortener struct {
 	originalToShort map[string]string
 	letters         []rune
 	mu              sync.RWMutex
+	logger          *zap.SugaredLogger
 }
 
-func NewURLShortener() *URLShortener {
+func NewURLShortener(logger *zap.SugaredLogger) *URLShortener {
 	return &URLShortener{
 		shortToOriginal: make(map[string]string),
 		originalToShort: make(map[string]string),
 		letters:         []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+		logger:          logger,
 	}
 }
 
@@ -44,14 +46,14 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	defer req.Body.Close()
 	body, err := io.ReadAll(req.Body)
 	if err != nil || len(body) == 0 {
-		log.Println("error reading body:", err)
+		u.logger.Errorf("Error reading request body: %v", err)
 		http.Error(res, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	origURL := strings.TrimSpace(string(body))
 	if origURL == "" {
-		log.Println("empty URL received")
+		u.logger.Errorf("Empty URL received")
 		http.Error(res, "empty url", http.StatusBadRequest)
 		return
 	}
@@ -77,14 +79,14 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	shortURL := config.Get().BaseURL + "/" + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	log.Printf("created short url: %s -> %s", shortID, origURL)
+	u.logger.Infof("created short url: %s -> %s", shortID, origURL)
 	res.Write([]byte(shortURL))
 }
 
 func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Request) {
 	id := chi.URLParam(req, "id")
 	if id == "" {
-		log.Println("invalid short url received: missing 'id' param")
+		u.logger.Error("invalid short url received: missing 'id' param")
 		http.Error(res, "invalid short url", http.StatusBadRequest)
 		return
 	}
@@ -94,7 +96,7 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 	u.mu.RUnlock()
 
 	if !ok {
-		log.Println("short url not found")
+		u.logger.Error("short url not found for id: " + id)
 		http.Error(res, "short url not found", http.StatusNotFound)
 		return
 	}
