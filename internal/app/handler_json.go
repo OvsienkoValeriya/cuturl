@@ -30,10 +30,10 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	u.mu.RLock()
 	if shortID, ok := u.originalToShort[reqBody.URL]; ok {
 		u.mu.RUnlock()
-		respJson, _ := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
+		respJSON, _ := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
 		res.Header().Set("Content-Type", "application/json")
 		res.WriteHeader(http.StatusCreated)
-		res.Write(respJson)
+		res.Write(respJSON)
 		return
 	}
 	u.mu.RUnlock()
@@ -43,7 +43,7 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	u.shortToOriginal[shortID] = reqBody.URL
 	u.originalToShort[reqBody.URL] = shortID
 	u.mu.Unlock()
-	respJson, err := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
+	respJSON, err := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
 	if err != nil {
 		http.Error(res, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -51,6 +51,6 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusCreated)
 	u.logger.Infof("created short url: %s -> %s", shortID, reqBody.URL)
-	res.Write(respJson)
+	res.Write(respJSON)
 
 }
