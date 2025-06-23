@@ -27,6 +27,8 @@ func main() {
 	u := app.NewURLShortener(sugar)
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware(sugar))
+	r.Use(middleware.GzipCompressMiddleware)
+	r.Use(middleware.GzipDecompressMiddleware)
 	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
 	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
 	r.Post("/api/shorten", http.HandlerFunc(u.OrigURLJSONHandler))
