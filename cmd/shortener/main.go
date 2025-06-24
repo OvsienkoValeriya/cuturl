@@ -26,6 +26,9 @@ func main() {
 	defer logger.Sync()
 
 	storage, err := store.NewStorage(cfg.FileStoragePath)
+	if err != nil {
+		log.Fatalf("failed to init storage: %v", err)
+	}
 
 	u := app.NewURLShortener(sugar, storage)
 	r := chi.NewRouter()
