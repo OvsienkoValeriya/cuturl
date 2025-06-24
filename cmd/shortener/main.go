@@ -4,6 +4,7 @@ import (
 	"cuturl/internal/app"
 	"cuturl/internal/config"
 	"cuturl/internal/middleware"
+	"cuturl/internal/store"
 	"log"
 	"net/http"
 
@@ -24,7 +25,9 @@ func main() {
 	sugar := logger.Sugar()
 	defer logger.Sync()
 
-	u := app.NewURLShortener(sugar)
+	storage, err := store.NewStorage(cfg.FileStoragePath)
+
+	u := app.NewURLShortener(sugar, storage)
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware(sugar))
 	r.Use(middleware.GzipCompressMiddleware)

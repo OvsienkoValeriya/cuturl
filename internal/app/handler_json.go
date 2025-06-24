@@ -2,6 +2,7 @@ package app
 
 import (
 	"cuturl/internal/config"
+	"cuturl/internal/store"
 	"encoding/json"
 	"net/http"
 )
@@ -30,7 +31,12 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	u.mu.RLock()
 	if shortID, ok := u.originalToShort[reqBody.URL]; ok {
 		u.mu.RUnlock()
-		respJSON, _ := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
+		shortURL := config.Get().BaseURL + "/" + shortID
+		respJSON, err := json.Marshal(Response{Result: shortURL})
+		if err != nil {
+			http.Error(res, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		res.Header().Set("Content-Type", "application/json")
 		res.WriteHeader(http.StatusCreated)
 		res.Write(respJSON)
@@ -39,18 +45,30 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	u.mu.RUnlock()
 
 	shortID := u.generateShorten(8)
+
 	u.mu.Lock()
 	u.shortToOriginal[shortID] = reqBody.URL
 	u.originalToShort[reqBody.URL] = shortID
 	u.mu.Unlock()
-	respJSON, err := json.Marshal(Response{Result: config.Get().BaseURL + "/" + shortID})
+
+	err := u.storage.Save(store.StoredURL{
+		UUID:        shortID,
+		ShortURL:    shortID,
+		OriginalURL: reqBody.URL,
+	})
+	if err != nil {
+		u.logger.Errorf("failed to save to file: %v", err)
+	}
+
+	shortURL := config.Get().BaseURL + "/" + shortID
+	respJSON, err := json.Marshal(Response{Result: shortURL})
 	if err != nil {
 		http.Error(res, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusCreated)
-	u.logger.Infof("created short url: %s -> %s", shortID, reqBody.URL)
+	u.logger.Infof("created short url: %s -> %s", shortURL, reqBody.URL)
 	res.Write(respJSON)
-
 }

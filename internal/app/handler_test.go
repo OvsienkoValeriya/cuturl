@@ -2,11 +2,14 @@ package app
 
 import (
 	"cuturl/internal/config"
+	"cuturl/internal/store"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +23,13 @@ func TestOrigURLHandler(t *testing.T) {
 	require.NoError(t, err)
 	sugar := logger.Sugar()
 	defer logger.Sync()
+
+	tmpFile, err := os.CreateTemp("", "store-*.json")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	storage, err := store.NewStorage(tmpFile.Name())
+	require.NoError(t, err)
 
 	type want struct {
 		code        int
@@ -62,7 +72,7 @@ func TestOrigURLHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := NewURLShortener(sugar)
+			u := NewURLShortener(sugar, storage)
 
 			r := chi.NewRouter()
 			r.Post("/", http.HandlerFunc(u.OrigURLHandler))
@@ -92,6 +102,13 @@ func TestOrigURLJSONHandler(t *testing.T) {
 	require.NoError(t, err)
 	sugar := logger.Sugar()
 	defer logger.Sync()
+
+	tmpFile, err := os.CreateTemp("", "store-*.json")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	storage, err := store.NewStorage(tmpFile.Name())
+	require.NoError(t, err)
 
 	type want struct {
 		code        int
@@ -146,7 +163,7 @@ func TestOrigURLJSONHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			u := NewURLShortener(sugar)
+			u := NewURLShortener(sugar, storage)
 
 			r := chi.NewRouter()
 			r.Post("/api/shorten", http.HandlerFunc(u.OrigURLJSONHandler))

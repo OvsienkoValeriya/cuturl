@@ -3,6 +3,7 @@ package app
 import (
 	"crypto/rand"
 	"cuturl/internal/config"
+	"cuturl/internal/store"
 	"io"
 	"math/big"
 	"net/http"
@@ -19,15 +20,23 @@ type URLShortener struct {
 	letters         []rune
 	mu              sync.RWMutex
 	logger          *zap.SugaredLogger
+	storage         *store.Storage
 }
 
-func NewURLShortener(logger *zap.SugaredLogger) *URLShortener {
-	return &URLShortener{
+func NewURLShortener(logger *zap.SugaredLogger, storage *store.Storage) *URLShortener {
+	us := &URLShortener{
 		shortToOriginal: make(map[string]string),
 		originalToShort: make(map[string]string),
 		letters:         []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
 		logger:          logger,
+		storage:         storage,
 	}
+	for _, entry := range storage.URLS {
+		us.shortToOriginal[entry.ShortURL] = entry.OriginalURL
+		us.originalToShort[entry.OriginalURL] = entry.ShortURL
+	}
+
+	return us
 }
 
 func (u *URLShortener) generateShorten(n int) string {
@@ -76,10 +85,19 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	u.originalToShort[origURL] = shortID
 	u.mu.Unlock()
 
+	err = u.storage.Save(store.StoredURL{
+		UUID:        shortID,
+		ShortURL:    shortID,
+		OriginalURL: origURL,
+	})
+	if err != nil {
+		u.logger.Errorf("failed to save to file: %v", err)
+	}
+
 	shortURL := config.Get().BaseURL + "/" + shortID
 	res.Header().Set("Content-Type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	u.logger.Infof("created short url: %s -> %s", shortID, origURL)
+	u.logger.Infof("created short url: %s -> %s", shortURL, origURL)
 	res.Write([]byte(shortURL))
 }
 
