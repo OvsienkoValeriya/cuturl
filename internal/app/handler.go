@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"encoding/json"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -20,20 +22,33 @@ type URLShortener struct {
 	letters         []rune
 	mu              sync.RWMutex
 	logger          *zap.SugaredLogger
-	storage         *store.Storage
+	repo            store.Repository
 }
 
-func NewURLShortener(logger *zap.SugaredLogger, storage *store.Storage) *URLShortener {
+type Request struct {
+	URL string `json:"url"`
+}
+type Response struct {
+	Result string `json:"result"`
+}
+
+func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShortener {
 	us := &URLShortener{
 		shortToOriginal: make(map[string]string),
 		originalToShort: make(map[string]string),
 		letters:         []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
 		logger:          logger,
-		storage:         storage,
+		repo:            repo,
 	}
-	for _, entry := range storage.URLS {
-		us.shortToOriginal[entry.ShortURL] = entry.OriginalURL
-		us.originalToShort[entry.OriginalURL] = entry.ShortURL
+
+	saved, err := repo.Load()
+	if err != nil {
+		logger.Errorf("failed to load storage: %v", err)
+	} else {
+		for _, entry := range saved {
+			us.shortToOriginal[entry.ShortURL] = entry.OriginalURL
+			us.originalToShort[entry.OriginalURL] = entry.ShortURL
+		}
 	}
 
 	return us
@@ -49,6 +64,32 @@ func (u *URLShortener) generateShorten(n int) string {
 		b[i] = u.letters[num.Int64()]
 	}
 	return string(b)
+}
+
+func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, error) {
+	u.mu.RLock()
+	if shortID, ok := u.originalToShort[originalURL]; ok {
+		u.mu.RUnlock()
+		return shortID, nil
+	}
+	u.mu.RUnlock()
+
+	shortID := u.generateShorten(8)
+
+	u.mu.Lock()
+	u.shortToOriginal[shortID] = originalURL
+	u.originalToShort[originalURL] = shortID
+	u.mu.Unlock()
+
+	err := u.repo.Save(store.StoredURL{
+		UUID:        shortID,
+		ShortURL:    shortID,
+		OriginalURL: originalURL,
+	})
+	if err != nil {
+		return "", err
+	}
+	return shortID, nil
 }
 
 func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request) {
@@ -67,37 +108,16 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		return
 	}
 
-	u.mu.RLock()
-	if shortID, ok := u.originalToShort[origURL]; ok {
-		u.mu.RUnlock()
-		shortURL := config.Get().BaseURL + "/" + shortID
-		res.Header().Set("Content-Type", "text/plain")
-		res.WriteHeader(http.StatusCreated)
-		res.Write([]byte(shortURL))
-		return
-	}
-	u.mu.RUnlock()
-
-	shortID := u.generateShorten(8)
-
-	u.mu.Lock()
-	u.shortToOriginal[shortID] = origURL
-	u.originalToShort[origURL] = shortID
-	u.mu.Unlock()
-
-	err = u.storage.Save(store.StoredURL{
-		UUID:        shortID,
-		ShortURL:    shortID,
-		OriginalURL: origURL,
-	})
+	shortID, err := u.getOrCreateShortURL(origURL)
 	if err != nil {
 		u.logger.Errorf("failed to save to file: %v", err)
+		http.Error(res, "internal error", http.StatusInternalServerError)
+		return
 	}
-
 	shortURL := config.Get().BaseURL + "/" + shortID
 	res.Header().Set("Content-Type", "text/plain")
-	res.WriteHeader(http.StatusCreated)
 	u.logger.Infof("created short url: %s -> %s", shortURL, origURL)
+	res.WriteHeader(http.StatusCreated)
 	res.Write([]byte(shortURL))
 }
 
@@ -121,4 +141,35 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 
 	res.Header().Set("Location", originalURL)
 	res.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Request) {
+	var reqBody Request
+	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
+		http.Error(res, "Invalid JSON format", http.StatusBadRequest)
+		return
+	}
+	defer req.Body.Close()
+
+	if reqBody.URL == "" {
+		u.logger.Errorf("empty URL received")
+		http.Error(res, "Empty URL", http.StatusBadRequest)
+		return
+	}
+
+	shortID, err := u.getOrCreateShortURL(reqBody.URL)
+	if err != nil {
+		u.logger.Errorf("failed to save to file: %v", err)
+		http.Error(res, "internal error", http.StatusInternalServerError)
+		return
+	}
+	shortURL := config.Get().BaseURL + "/" + shortID
+	respJSON, err := json.Marshal(Response{Result: shortURL})
+	if err != nil {
+		http.Error(res, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+	res.Write(respJSON)
 }

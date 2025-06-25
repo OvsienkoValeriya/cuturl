@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var sugar zap.SugaredLogger
+const defaultStatusCode = 200
 
 type (
 	responseData struct {
@@ -41,7 +41,7 @@ func LoggingMiddleware(sugar *zap.SugaredLogger) func(http.Handler) http.Handler
 			start := time.Now()
 
 			responseData := &responseData{
-				statusCode: 0,
+				statusCode: defaultStatusCode,
 				size:       0,
 			}
 

@@ -7,9 +7,13 @@ import (
 	"sync"
 )
 
-type Storage struct {
+type Repository interface {
+	Load() ([]StoredURL, error)
+	Save(entry StoredURL) error
+}
+
+type FileRepository struct {
 	Path      string
-	URLS      []StoredURL
 	urlsMutex sync.RWMutex
 }
 
@@ -19,49 +23,71 @@ type StoredURL struct {
 	OriginalURL string `json:"original_url"`
 }
 
-func NewStorage(path string) (*Storage, error) {
-	storage := &Storage{
-		Path: path,
-		URLS: []StoredURL{},
-	}
-	if err := storage.Load(); err != nil {
-		return nil, err
-	}
-	return storage, nil
+func NewFileRepository(path string) *FileRepository {
+	return &FileRepository{Path: path}
 }
 
-func (storage *Storage) Load() error {
-	storage.urlsMutex.Lock()
-	defer storage.urlsMutex.Unlock()
+func (fr *FileRepository) Load() ([]StoredURL, error) {
+	fr.urlsMutex.Lock()
+	defer fr.urlsMutex.Unlock()
 
-	file, err := os.OpenFile(storage.Path, os.O_RDONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(fr.Path, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
+	var urls []StoredURL
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
 		var entry StoredURL
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
-			storage.URLS = append(storage.URLS, entry)
+			urls = append(urls, entry)
 		}
 	}
-	return scanner.Err()
+	return urls, scanner.Err()
 }
 
-func (storage *Storage) Save(entry StoredURL) error {
-	storage.urlsMutex.Lock()
-	defer storage.urlsMutex.Unlock()
+func (fr *FileRepository) Save(entry StoredURL) error {
+	fr.urlsMutex.Lock()
+	defer fr.urlsMutex.Unlock()
 
-	storage.URLS = append(storage.URLS, entry)
-
-	file, err := os.OpenFile(storage.Path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
+	file, err := os.OpenFile(fr.Path, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	enc := json.NewEncoder(file)
-	return enc.Encode(entry)
+	var urls []StoredURL
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var e StoredURL
+		if err := json.Unmarshal(scanner.Bytes(), &e); err == nil {
+			urls = append(urls, e)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	urls = append(urls, entry)
+
+	tmpPath := fr.Path + ".tmp"
+	tmpFile, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+
+	enc := json.NewEncoder(tmpFile)
+	for _, u := range urls {
+		if err := enc.Encode(u); err != nil {
+			tmpFile.Close()
+			return err
+		}
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	return os.Rename(tmpPath, fr.Path)
 }

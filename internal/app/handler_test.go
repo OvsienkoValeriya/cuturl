@@ -28,7 +28,7 @@ func TestOrigURLHandler(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	storage, err := store.NewStorage(tmpFile.Name())
+	storage := store.NewFileRepository(tmpFile.Name())
 	require.NoError(t, err)
 
 	type want struct {
@@ -107,7 +107,7 @@ func TestOrigURLJSONHandler(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 
-	storage, err := store.NewStorage(tmpFile.Name())
+	storage := store.NewFileRepository(tmpFile.Name())
 	require.NoError(t, err)
 
 	type want struct {
