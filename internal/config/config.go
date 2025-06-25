@@ -5,42 +5,59 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 type Config struct {
-	RunAddress string
-	BaseURL    string
+	RunAddress      string
+	BaseURL         string
+	FileStoragePath string
 }
 
-var cfg *Config
+var (
+	cfg  *Config
+	once sync.Once
+)
 
 func Init() {
-	flagRunAddr := flag.String("a", "", "http server run address")
-	flagBaseURL := flag.String("b", "", "base url for short address")
-	flag.Parse()
+	once.Do(func() {
+		flagRunAddr := flag.String("a", "", "http server run address")
+		flagBaseURL := flag.String("b", "", "base url for short address")
+		flagFileStoragePath := flag.String("f", "", "path for file storage")
+		flag.Parse()
 
-	defaultRunAddr := "localhost:8080"
-	defaultBaseURL := "http://localhost:8080/"
+		defaultRunAddr := "localhost:8080"
+		defaultBaseURL := "http://localhost:8080/"
+		defaultFileStoragePath := "/tmp/urls.json"
 
-	runAddr := defaultRunAddr
-	baseURL := defaultBaseURL
+		runAddr := defaultRunAddr
+		baseURL := defaultBaseURL
+		fileStoragePath := defaultFileStoragePath
 
-	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
-		runAddr = envRunAddr
-	} else if *flagRunAddr != "" {
-		runAddr = *flagRunAddr
-	}
+		if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
+			runAddr = envRunAddr
+		} else if *flagRunAddr != "" {
+			runAddr = *flagRunAddr
+		}
 
-	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
-		baseURL = envBaseURL
-	} else if *flagBaseURL != "" {
-		baseURL = *flagBaseURL
-	}
+		if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+			baseURL = envBaseURL
+		} else if *flagBaseURL != "" {
+			baseURL = *flagBaseURL
+		}
 
-	cfg = &Config{
-		RunAddress: runAddr,
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-	}
+		if envFileStorage := os.Getenv("FILE_STORAGE_PATH"); envFileStorage != "" {
+			fileStoragePath = envFileStorage
+		} else if *flagFileStoragePath != "" {
+			fileStoragePath = *flagFileStoragePath
+		}
+
+		cfg = &Config{
+			RunAddress:      runAddr,
+			BaseURL:         strings.TrimRight(baseURL, "/"),
+			FileStoragePath: strings.TrimRight(fileStoragePath, "/"),
+		}
+	})
 }
 
 func Get() *Config {
