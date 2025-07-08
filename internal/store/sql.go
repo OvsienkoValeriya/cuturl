@@ -9,7 +9,7 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgerrcode"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type SQLRepository struct {
@@ -17,7 +17,7 @@ type SQLRepository struct {
 }
 
 func NewPostgresRepository(dsn string) (Repository, error) {
-	db, err := sqlx.Connect("postgres", dsn)
+	db, err := sqlx.Connect("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to db: %w", err)
 	}
@@ -90,7 +90,7 @@ func (r *SQLRepository) Save(entry StoredURL) error {
 	_, err = r.db.Exec(query, args...)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.UniqueViolation {
-			return fmt.Errorf("conflict: %w", err)
+			return ErrUniqueViolation
 		}
 		return err
 	}

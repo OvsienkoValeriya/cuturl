@@ -11,6 +11,10 @@ import (
 
 	"encoding/json"
 
+	"errors"
+
+	"net/url"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -60,25 +64,28 @@ func (u *URLShortener) generateShorten(n int) string {
 }
 
 func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, error) {
-	existing, err := u.repo.FindByOriginalURL(originalURL)
-	if err == nil && existing != nil {
-		return existing.ShortURL, http.StatusConflict, nil
-	}
-
 	shortID := u.generateShorten(8)
-
-	err = u.repo.Save(store.StoredURL{
+	entry := store.StoredURL{
 		UUID:        shortID,
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
-	})
-	if err != nil {
-		if existing, findErr := u.repo.FindByOriginalURL(originalURL); findErr == nil && existing != nil {
-			return existing.ShortURL, http.StatusConflict, nil
-		}
-		return "", http.StatusInternalServerError, err
 	}
-	return shortID, http.StatusCreated, nil
+
+	err := u.repo.Save(entry)
+	if err == nil {
+		return shortID, http.StatusCreated, nil
+	}
+
+	if errors.Is(err, store.ErrUniqueViolation) {
+		existing, findErr := u.repo.FindByOriginalURL(originalURL)
+		if findErr != nil || existing == nil {
+			u.logger.Errorf("conflict on save but failed to find existing url: %v", findErr)
+			return "", http.StatusInternalServerError, findErr
+		}
+		return existing.ShortURL, http.StatusConflict, nil
+	}
+
+	return "", http.StatusInternalServerError, err
 }
 
 func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request) {
@@ -103,7 +110,7 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
 	}
-	shortURL := config.Get().BaseURL + "/" + shortID
+	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
 	res.Header().Set("Content-Type", "text/plain")
 	u.logger.Infof("created short url: %s -> %s", shortURL, origURL)
 	res.WriteHeader(status)
@@ -148,7 +155,7 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
 	}
-	shortURL := config.Get().BaseURL + "/" + shortID
+	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
 	respJSON, err := json.Marshal(Response{Result: shortURL})
 	if err != nil {
 		http.Error(res, "Internal Server Error", http.StatusInternalServerError)
@@ -162,7 +169,7 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 func (u *URLShortener) PingHandler(w http.ResponseWriter, r *http.Request) {
 	if err := u.repo.Ping(); err != nil {
 		u.logger.Errorw("DB ping failed", "error", err)
-		http.Error(w, "Database connection error", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -184,6 +191,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		shortID := u.generateShorten(8)
+		shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
 		entries = append(entries, store.StoredURL{
 			UUID:        shortID,
 			ShortURL:    shortID,
@@ -191,7 +199,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 		})
 		result = append(result, BatchResponseItem{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      config.Get().BaseURL + "/" + shortID,
+			ShortURL:      shortURL,
 		})
 	}
 
@@ -208,5 +216,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		u.logger.Errorw("failed to encode response", "error", err)
+	}
 }

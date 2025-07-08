@@ -7,7 +7,7 @@ import (
 
 type InMemoryRepository struct {
 	data map[string]StoredURL
-	mu   sync.RWMutex
+	mu   sync.Mutex
 }
 
 func NewInMemoryRepository() *InMemoryRepository {
@@ -15,8 +15,8 @@ func NewInMemoryRepository() *InMemoryRepository {
 }
 
 func (r *InMemoryRepository) Load() ([]StoredURL, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	var result []StoredURL
 	for _, entry := range r.data {
@@ -33,8 +33,8 @@ func (r *InMemoryRepository) Save(entry StoredURL) error {
 }
 
 func (r *InMemoryRepository) FindByShortID(id string) (*StoredURL, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if entry, ok := r.data[id]; ok {
 		return &entry, nil
 	}
@@ -42,8 +42,8 @@ func (r *InMemoryRepository) FindByShortID(id string) (*StoredURL, error) {
 }
 
 func (r *InMemoryRepository) FindByOriginalURL(orig string) (*StoredURL, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for _, entry := range r.data {
 		if entry.OriginalURL == orig {
 			return &entry, nil

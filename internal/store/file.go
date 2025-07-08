@@ -19,7 +19,7 @@ type Repository interface {
 
 type FileRepository struct {
 	Path      string
-	urlsMutex sync.RWMutex
+	urlsMutex sync.Mutex
 }
 
 type StoredURL struct {
@@ -102,8 +102,8 @@ func (fr *FileRepository) Ping() error {
 }
 
 func (fr *FileRepository) FindByShortID(id string) (*StoredURL, error) {
-	fr.urlsMutex.RLock()
-	defer fr.urlsMutex.RUnlock()
+	fr.urlsMutex.Lock()
+	defer fr.urlsMutex.Unlock()
 
 	file, err := os.Open(fr.Path)
 	if err != nil {
@@ -127,8 +127,8 @@ func (fr *FileRepository) FindByShortID(id string) (*StoredURL, error) {
 }
 
 func (fr *FileRepository) FindByOriginalURL(orig string) (*StoredURL, error) {
-	fr.urlsMutex.RLock()
-	defer fr.urlsMutex.RUnlock()
+	fr.urlsMutex.Lock()
+	defer fr.urlsMutex.Unlock()
 
 	file, err := os.Open(fr.Path)
 	if err != nil {

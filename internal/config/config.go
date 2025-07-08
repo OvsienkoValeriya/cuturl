@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -31,7 +30,7 @@ func Init() {
 		defaultRunAddr := "localhost:8080"
 		defaultBaseURL := "http://localhost:8080/"
 		defaultFileStoragePath := "/tmp/urls.json"
-		defaultDBConnection := "postgres://postgres:postgres@localhost:5432/URL_Shortener?sslmode=disable"
+		defaultDBConnection := ""
 
 		runAddr := defaultRunAddr
 		baseURL := defaultBaseURL
@@ -64,8 +63,8 @@ func Init() {
 
 		cfg = &Config{
 			RunAddress:      runAddr,
-			BaseURL:         strings.TrimRight(baseURL, "/"),
-			FileStoragePath: strings.TrimRight(fileStoragePath, "/"),
+			BaseURL:         baseURL,
+			FileStoragePath: fileStoragePath,
 			DBConnection:    dbConnection,
 		}
 	})
