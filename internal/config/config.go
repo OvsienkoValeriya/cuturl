@@ -25,18 +25,18 @@ func Init() {
 		flagRunAddr := flag.String("a", "", "http server run address")
 		flagBaseURL := flag.String("b", "", "base url for short address")
 		flagFileStoragePath := flag.String("f", "", "path for file storage")
-		flagDbConnection := flag.String("d", "", "database connection string")
+		flagDBConnection := flag.String("d", "", "database connection string")
 		flag.Parse()
 
 		defaultRunAddr := "localhost:8080"
 		defaultBaseURL := "http://localhost:8080/"
 		defaultFileStoragePath := "/tmp/urls.json"
-		defaultDbConnection := "postgres://postgres:postgres@localhost:5432/URL_Shortener?sslmode=disable"
+		defaultDBConnection := "postgres://postgres:postgres@localhost:5432/URL_Shortener?sslmode=disable"
 
 		runAddr := defaultRunAddr
 		baseURL := defaultBaseURL
 		fileStoragePath := defaultFileStoragePath
-		dbConnection := defaultDbConnection
+		dbConnection := defaultDBConnection
 
 		if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
 			runAddr = envRunAddr
@@ -58,8 +58,8 @@ func Init() {
 
 		if envDbConnection := os.Getenv("DATABASE_DSN"); envDbConnection != "" {
 			dbConnection = envDbConnection
-		} else if *flagDbConnection != "" {
-			dbConnection = *flagDbConnection
+		} else if *flagDBConnection != "" {
+			dbConnection = *flagDBConnection
 		}
 
 		cfg = &Config{
