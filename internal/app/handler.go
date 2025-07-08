@@ -73,8 +73,7 @@ func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, err
 
 	err := u.repo.Save(entry)
 	if err == nil {
-		fullShortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
-		return fullShortURL, http.StatusCreated, nil
+		return shortID, http.StatusCreated, nil
 	}
 
 	if errors.Is(err, store.ErrUniqueViolation) {
