@@ -56,8 +56,8 @@ func Init() {
 			fileStoragePath = *flagFileStoragePath
 		}
 
-		if envDbConnection := os.Getenv("DATABASE_DSN"); envDbConnection != "" {
-			dbConnection = envDbConnection
+		if envDBConnection := os.Getenv("DATABASE_DSN"); envDBConnection != "" {
+			dbConnection = envDBConnection
 		} else if *flagDBConnection != "" {
 			dbConnection = *flagDBConnection
 		}
