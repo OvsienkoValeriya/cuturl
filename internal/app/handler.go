@@ -82,8 +82,7 @@ func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, err
 			u.logger.Errorf("conflict on save but failed to find existing url: %v", findErr)
 			return "", http.StatusInternalServerError, findErr
 		}
-		fullShortURL, _ := url.JoinPath(config.Get().BaseURL, existing.ShortURL)
-		return fullShortURL, http.StatusConflict, nil
+		return existing.ShortURL, http.StatusConflict, nil
 	}
 
 	return "", http.StatusInternalServerError, err
