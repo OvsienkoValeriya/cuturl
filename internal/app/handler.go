@@ -106,6 +106,10 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 
 	shortID, status, err := u.getOrCreateShortURL(origURL)
 	if err != nil {
+		if status == http.StatusConflict {
+			http.Error(res, "", http.StatusConflict)
+			return
+		}
 		u.logger.Errorf("failed to save or find url: %v", err)
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
@@ -151,6 +155,11 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 
 	shortID, status, err := u.getOrCreateShortURL(reqBody.URL)
 	if err != nil {
+		if status == http.StatusConflict {
+			res.Header().Set("Content-Type", "application/json")
+			http.Error(res, "", http.StatusConflict)
+			return
+		}
 		u.logger.Errorf("failed to save or find url: %v", err)
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
