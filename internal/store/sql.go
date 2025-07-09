@@ -90,7 +90,7 @@ func (r *SQLRepository) Save(entry StoredURL) error {
 	_, err = r.db.Exec(query, args...)
 	if err != nil {
 		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.UniqueViolation {
-			return ErrUniqueViolation
+			return fmt.Errorf("unique violation: %w", ErrUniqueViolation)
 		}
 		return err
 	}
@@ -156,6 +156,9 @@ func (r *SQLRepository) BatchSave(ctx context.Context, urls []StoredURL) error {
 
 	for _, u := range urls {
 		if _, err := stmt.ExecContext(ctx, u.UUID, u.ShortURL, u.OriginalURL); err != nil {
+			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.UniqueViolation {
+				return fmt.Errorf("unique violation in batch: %w", ErrUniqueViolation)
+			}
 			return err
 		}
 	}
