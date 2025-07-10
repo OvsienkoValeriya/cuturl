@@ -25,9 +25,30 @@ func main() {
 	sugar := logger.Sugar()
 	defer logger.Sync()
 
-	storage := store.NewFileRepository(cfg.FileStoragePath)
+	var repo store.Repository
+	if cfg.DBConnection != "" {
+		db, err := store.NewPostgresRepository(cfg.DBConnection)
+		if err == nil {
+			repo = db
+			log.Println("Using PostgreSQL as storage")
+		} else {
+			log.Printf("Postgres connection failed: %v", err)
+		}
+	} else {
+		log.Println("No DB connection string set; falling back to file or memory storage")
+	}
 
-	u := app.NewURLShortener(sugar, storage)
+	if repo == nil && cfg.FileStoragePath != "" {
+		repo = store.NewFileRepository(cfg.FileStoragePath)
+		log.Println("Using FileStorage as storage")
+	}
+
+	if repo == nil {
+		repo = store.NewInMemoryRepository()
+		log.Println("Using Memory as storage")
+	}
+
+	u := app.NewURLShortener(sugar, repo)
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware(sugar))
 	r.Use(middleware.GzipCompressMiddleware)
@@ -35,6 +56,8 @@ func main() {
 	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
 	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
 	r.Post("/api/shorten", http.HandlerFunc(u.OrigURLJSONHandler))
+	r.Get("/ping", http.HandlerFunc(u.PingHandler))
+	r.Post("/api/shorten/batch", http.HandlerFunc(u.ShortenBatchHandler))
 
 	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
 		log.Fatalf("server failed to start: %v", err)

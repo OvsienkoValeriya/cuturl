@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -12,6 +11,7 @@ type Config struct {
 	RunAddress      string
 	BaseURL         string
 	FileStoragePath string
+	DBConnection    string
 }
 
 var (
@@ -24,15 +24,18 @@ func Init() {
 		flagRunAddr := flag.String("a", "", "http server run address")
 		flagBaseURL := flag.String("b", "", "base url for short address")
 		flagFileStoragePath := flag.String("f", "", "path for file storage")
+		flagDBConnection := flag.String("d", "", "database connection string")
 		flag.Parse()
 
 		defaultRunAddr := "localhost:8080"
 		defaultBaseURL := "http://localhost:8080/"
 		defaultFileStoragePath := "/tmp/urls.json"
+		defaultDBConnection := ""
 
 		runAddr := defaultRunAddr
 		baseURL := defaultBaseURL
 		fileStoragePath := defaultFileStoragePath
+		dbConnection := defaultDBConnection
 
 		if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
 			runAddr = envRunAddr
@@ -52,10 +55,17 @@ func Init() {
 			fileStoragePath = *flagFileStoragePath
 		}
 
+		if envDBConnection := os.Getenv("DATABASE_DSN"); envDBConnection != "" {
+			dbConnection = envDBConnection
+		} else if *flagDBConnection != "" {
+			dbConnection = *flagDBConnection
+		}
+
 		cfg = &Config{
 			RunAddress:      runAddr,
-			BaseURL:         strings.TrimRight(baseURL, "/"),
-			FileStoragePath: strings.TrimRight(fileStoragePath, "/"),
+			BaseURL:         baseURL,
+			FileStoragePath: fileStoragePath,
+			DBConnection:    dbConnection,
 		}
 	})
 }

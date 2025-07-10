@@ -8,21 +8,21 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
-	"sync"
 
 	"encoding/json"
+
+	"errors"
+
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
 type URLShortener struct {
-	shortToOriginal map[string]string
-	originalToShort map[string]string
-	letters         []rune
-	mu              sync.RWMutex
-	logger          *zap.SugaredLogger
-	repo            store.Repository
+	letters []rune
+	logger  *zap.SugaredLogger
+	repo    store.Repository
 }
 
 type Request struct {
@@ -31,24 +31,21 @@ type Request struct {
 type Response struct {
 	Result string `json:"result"`
 }
+type BatchRequestItem struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
+
+type BatchResponseItem struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
 
 func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShortener {
 	us := &URLShortener{
-		shortToOriginal: make(map[string]string),
-		originalToShort: make(map[string]string),
-		letters:         []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
-		logger:          logger,
-		repo:            repo,
-	}
-
-	saved, err := repo.Load()
-	if err != nil {
-		logger.Errorf("failed to load storage: %v", err)
-	} else {
-		for _, entry := range saved {
-			us.shortToOriginal[entry.ShortURL] = entry.OriginalURL
-			us.originalToShort[entry.OriginalURL] = entry.ShortURL
-		}
+		letters: []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+		logger:  logger,
+		repo:    repo,
 	}
 
 	return us
@@ -66,30 +63,28 @@ func (u *URLShortener) generateShorten(n int) string {
 	return string(b)
 }
 
-func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, error) {
-	u.mu.RLock()
-	if shortID, ok := u.originalToShort[originalURL]; ok {
-		u.mu.RUnlock()
-		return shortID, nil
-	}
-	u.mu.RUnlock()
-
+func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, error) {
 	shortID := u.generateShorten(8)
-
-	u.mu.Lock()
-	u.shortToOriginal[shortID] = originalURL
-	u.originalToShort[originalURL] = shortID
-	u.mu.Unlock()
-
-	err := u.repo.Save(store.StoredURL{
+	entry := store.StoredURL{
 		UUID:        shortID,
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
-	})
-	if err != nil {
-		return "", err
 	}
-	return shortID, nil
+
+	err := u.repo.Save(entry)
+	if err == nil {
+		return shortID, http.StatusCreated, nil
+	}
+
+	if errors.Is(err, store.ErrUniqueViolation) {
+		existing, findErr := u.repo.FindByOriginalURL(originalURL)
+		if findErr != nil || existing == nil {
+			return "", http.StatusInternalServerError, findErr
+		}
+		return existing.ShortURL, http.StatusConflict, nil
+	}
+
+	return "", http.StatusInternalServerError, err
 }
 
 func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request) {
@@ -108,38 +103,39 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		return
 	}
 
-	shortID, err := u.getOrCreateShortURL(origURL)
+	shortID, status, err := u.getOrCreateShortURL(origURL)
 	if err != nil {
-		u.logger.Errorf("failed to save to file: %v", err)
+		if status == http.StatusConflict {
+			u.logger.Errorf("failed to handle URL: URL exists %q: %v", origURL, err)
+			http.Error(res, "", http.StatusConflict)
+			return
+		}
+		u.logger.Errorf("failed to save or find url: %v", err)
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
 	}
-	shortURL := config.Get().BaseURL + "/" + shortID
+	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
 	res.Header().Set("Content-Type", "text/plain")
 	u.logger.Infof("created short url: %s -> %s", shortURL, origURL)
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(status)
 	res.Write([]byte(shortURL))
 }
 
 func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Request) {
 	id := chi.URLParam(req, "id")
 	if id == "" {
-		u.logger.Error("invalid short url received: missing 'id' param")
-		http.Error(res, "invalid short url", http.StatusBadRequest)
+		http.Error(res, "missing id", http.StatusBadRequest)
 		return
 	}
 
-	u.mu.RLock()
-	originalURL, ok := u.shortToOriginal[id]
-	u.mu.RUnlock()
-
-	if !ok {
-		u.logger.Error("short url not found for id: " + id)
-		http.Error(res, "short url not found", http.StatusNotFound)
+	entry, err := u.repo.FindByShortID(id)
+	if err != nil {
+		u.logger.Errorf("failed to find short ID: %v", err)
+		http.Error(res, "not found", http.StatusNotFound)
 		return
 	}
 
-	res.Header().Set("Location", originalURL)
+	res.Header().Set("Location", entry.OriginalURL)
 	res.WriteHeader(http.StatusTemporaryRedirect)
 }
 
@@ -157,19 +153,80 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 		return
 	}
 
-	shortID, err := u.getOrCreateShortURL(reqBody.URL)
+	shortID, status, err := u.getOrCreateShortURL(reqBody.URL)
 	if err != nil {
-		u.logger.Errorf("failed to save to file: %v", err)
+		if status == http.StatusConflict {
+			res.Header().Set("Content-Type", "application/json")
+			u.logger.Errorf("failed to handle URL: URL exists %q: %v", reqBody.URL, err)
+			http.Error(res, "", http.StatusConflict)
+			return
+		}
+		u.logger.Errorf("failed to save or find url: %v", err)
 		http.Error(res, "internal error", http.StatusInternalServerError)
 		return
 	}
-	shortURL := config.Get().BaseURL + "/" + shortID
+	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
 	respJSON, err := json.Marshal(Response{Result: shortURL})
 	if err != nil {
 		http.Error(res, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 	res.Header().Set("Content-Type", "application/json")
-	res.WriteHeader(http.StatusCreated)
+	res.WriteHeader(status)
 	res.Write(respJSON)
+}
+
+func (u *URLShortener) PingHandler(w http.ResponseWriter, r *http.Request) {
+	if err := u.repo.Ping(); err != nil {
+		u.logger.Errorw("DB ping failed", "error", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	var batch []BatchRequestItem
+	if err := json.NewDecoder(r.Body).Decode(&batch); err != nil || len(batch) == 0 {
+		http.Error(w, "invalid batch", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	result := make([]BatchResponseItem, 0, len(batch))
+	entries := make([]store.StoredURL, 0, len(batch))
+
+	for _, item := range batch {
+		if strings.TrimSpace(item.OriginalURL) == "" {
+			continue
+		}
+		shortID := u.generateShorten(8)
+		shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
+		entries = append(entries, store.StoredURL{
+			UUID:        shortID,
+			ShortURL:    shortID,
+			OriginalURL: item.OriginalURL,
+		})
+		result = append(result, BatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      shortURL,
+		})
+	}
+
+	if len(entries) == 0 {
+		http.Error(w, "empty valid batch", http.StatusBadRequest)
+		return
+	}
+
+	if err := u.repo.BatchSave(r.Context(), entries); err != nil {
+		u.logger.Errorf("batch save failed: %v", err)
+		http.Error(w, "could not save batch", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		u.logger.Errorw("failed to encode response", "error", err)
+	}
 }
