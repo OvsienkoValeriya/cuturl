@@ -79,7 +79,6 @@ func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, err
 	if errors.Is(err, store.ErrUniqueViolation) {
 		existing, findErr := u.repo.FindByOriginalURL(originalURL)
 		if findErr != nil || existing == nil {
-			u.logger.Errorf("conflict on save but failed to find existing url: %v", findErr)
 			return "", http.StatusInternalServerError, findErr
 		}
 		return existing.ShortURL, http.StatusConflict, nil
@@ -107,6 +106,7 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 	shortID, status, err := u.getOrCreateShortURL(origURL)
 	if err != nil {
 		if status == http.StatusConflict {
+			u.logger.Errorf("failed to handle URL: URL exists %q: %v", origURL, err)
 			http.Error(res, "", http.StatusConflict)
 			return
 		}
@@ -157,6 +157,7 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	if err != nil {
 		if status == http.StatusConflict {
 			res.Header().Set("Content-Type", "application/json")
+			u.logger.Errorf("failed to handle URL: URL exists %q: %v", reqBody.URL, err)
 			http.Error(res, "", http.StatusConflict)
 			return
 		}

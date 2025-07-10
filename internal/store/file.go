@@ -19,7 +19,7 @@ type Repository interface {
 
 type FileRepository struct {
 	Path      string
-	urlsMutex sync.Mutex
+	urlsMutex *sync.Mutex
 }
 
 type StoredURL struct {
@@ -29,7 +29,7 @@ type StoredURL struct {
 }
 
 func NewFileRepository(path string) *FileRepository {
-	return &FileRepository{Path: path}
+	return &FileRepository{Path: path, urlsMutex: &sync.Mutex{}}
 }
 
 func (fr *FileRepository) Load() ([]StoredURL, error) {

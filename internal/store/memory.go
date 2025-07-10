@@ -7,11 +7,11 @@ import (
 
 type InMemoryRepository struct {
 	data map[string]StoredURL
-	mu   sync.Mutex
+	mu   *sync.Mutex
 }
 
 func NewInMemoryRepository() *InMemoryRepository {
-	return &InMemoryRepository{data: make(map[string]StoredURL)}
+	return &InMemoryRepository{data: make(map[string]StoredURL), mu: &sync.Mutex{}}
 }
 
 func (r *InMemoryRepository) Load() ([]StoredURL, error) {
