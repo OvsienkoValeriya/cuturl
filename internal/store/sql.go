@@ -210,7 +210,7 @@ func (r *SQLRepository) MarkDeleted(ctx context.Context, userID string, ids []st
 		Update("urls").
 		Set("is_deleted", true).
 		Where(sq.Eq{"user_id": userID}).
-		Where(sq.Eq{"uuid": ids}).
+		Where(sq.Eq{"short_url": ids}).
 		PlaceholderFormat(sq.Dollar)
 
 	query, args, err := queryBuilder.ToSql()

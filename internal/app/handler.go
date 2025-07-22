@@ -18,6 +18,8 @@ import (
 
 	"context"
 
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -292,7 +294,10 @@ func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	go func() {
-		err := u.repo.MarkDeleted(context.Background(), userID, ids)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		err := u.repo.MarkDeleted(ctx, userID, ids)
 		if err != nil {
 			u.logger.Errorf("async delete failed: %v", err)
 		}
