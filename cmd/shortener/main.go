@@ -17,10 +17,6 @@ func main() {
 	config.Init()
 	cfg := config.Get()
 
-	if cfg.AuthSecret == "" {
-		log.Fatal("auth secret must be set in config.AuthSecret")
-	}
-
 	log.Println("Starting server on", cfg.RunAddress)
 
 	logger, err := zap.NewDevelopment()

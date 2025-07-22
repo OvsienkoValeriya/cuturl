@@ -15,8 +15,8 @@ type Repository interface {
 	FindByShortID(id string) (*StoredURL, error)
 	FindByOriginalURL(orig string) (*StoredURL, error)
 	BatchSave(ctx context.Context, urls []StoredURL) error
-	GetURLsByUserID(ctx context.Context, userId string) ([]StoredURL, error)
-	MarkDeleted(ctx context.Context, userId string, ids []string) error
+	GetURLsByUserID(ctx context.Context, userID string) ([]StoredURL, error)
+	MarkDeleted(ctx context.Context, userID string, ids []string) error
 }
 
 type FileRepository struct {

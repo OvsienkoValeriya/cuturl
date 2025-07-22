@@ -66,13 +66,13 @@ func (u *URLShortener) generateShorten(n int) string {
 	return string(b)
 }
 
-func (u *URLShortener) getOrCreateShortURL(originalURL string, userId string) (string, int, error) {
+func (u *URLShortener) getOrCreateShortURL(originalURL string, userID string) (string, int, error) {
 	shortID := u.generateShorten(8)
 	entry := store.StoredURL{
 		UUID:        shortID,
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
-		UserID:      userId,
+		UserID:      userID,
 	}
 
 	err := u.repo.Save(entry)
