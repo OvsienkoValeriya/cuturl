@@ -15,7 +15,10 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, err := auth.GetUserIDFromRequest(r)
 		if err != nil || userID == "" {
-			ctx := context.WithValue(r.Context(), UserIDKey, "")
+			newUserID := auth.GenerateToken()
+			auth.SetAuthCookie(w, newUserID)
+
+			ctx := context.WithValue(r.Context(), UserIDKey, newUserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}

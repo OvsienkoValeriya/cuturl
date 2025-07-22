@@ -18,8 +18,6 @@ import (
 
 	"context"
 
-	"cuturl/internal/auth"
-
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -109,10 +107,6 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		return
 	}
 	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
-	if userID == "" {
-		userID = auth.GenerateToken()
-		auth.SetAuthCookie(res, userID)
-	}
 
 	shortID, status, err := u.getOrCreateShortURL(origURL, userID)
 	if err != nil {
@@ -170,10 +164,6 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 	}
 	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
 
-	if userID == "" {
-		userID = auth.GenerateToken()
-		auth.SetAuthCookie(res, userID)
-	}
 	shortID, status, err := u.getOrCreateShortURL(reqBody.URL, userID)
 	if err != nil {
 		if status == http.StatusConflict {
@@ -215,10 +205,6 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 	defer r.Body.Close()
 
 	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
-	if userID == "" {
-		userID = auth.GenerateToken()
-		auth.SetAuthCookie(w, userID)
-	}
 
 	result := make([]BatchResponseItem, 0, len(batch))
 	entries := make([]store.StoredURL, 0, len(batch))
