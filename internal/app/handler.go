@@ -258,6 +258,7 @@ func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
 
 	if len(urls) == 0 {
 		w.WriteHeader(http.StatusNoContent)
+		w.Header().Set("Content-Type", "application/json")
 		return
 	}
 
