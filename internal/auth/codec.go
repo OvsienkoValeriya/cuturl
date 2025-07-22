@@ -42,9 +42,9 @@ func validateToken(token string) (string, error) {
 	return userID, nil
 }
 
-func GenerateToken() (string, string) {
+func GenerateToken() string {
 	userID := uuid.NewString()
-	return userID, createHMAC(userID)
+	return userID
 }
 
 func SetAuthCookie(w http.ResponseWriter, userID string) {
