@@ -194,6 +194,10 @@ func (r *SQLRepository) GetURLsByUserID(ctx context.Context, userID string) ([]S
 		}
 		res = append(res, u)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return res, nil
 }
 

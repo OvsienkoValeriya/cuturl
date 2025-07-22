@@ -22,11 +22,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				Path:     "/",
 				HttpOnly: true,
 			})
-		}
-
-		userID, err = auth.GetUserIDFromRequest(r)
-		if err != nil || userID == "" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		} else {
+			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
