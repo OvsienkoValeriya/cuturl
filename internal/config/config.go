@@ -12,6 +12,7 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	DBConnection    string
+	AuthSecret      string
 }
 
 var (
@@ -25,17 +26,20 @@ func Init() {
 		flagBaseURL := flag.String("b", "", "base url for short address")
 		flagFileStoragePath := flag.String("f", "", "path for file storage")
 		flagDBConnection := flag.String("d", "", "database connection string")
+		flagAuthSecret := flag.String("s", "", "auth secret for signing tokens")
 		flag.Parse()
 
 		defaultRunAddr := "localhost:8080"
 		defaultBaseURL := "http://localhost:8080/"
 		defaultFileStoragePath := "/tmp/urls.json"
 		defaultDBConnection := ""
+		defaultAuthSecret := ""
 
 		runAddr := defaultRunAddr
 		baseURL := defaultBaseURL
 		fileStoragePath := defaultFileStoragePath
 		dbConnection := defaultDBConnection
+		authSecret := defaultAuthSecret
 
 		if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
 			runAddr = envRunAddr
@@ -61,11 +65,18 @@ func Init() {
 			dbConnection = *flagDBConnection
 		}
 
+		if envAuthSecret := os.Getenv("AUTH_SECRET"); envAuthSecret != "" {
+			authSecret = envAuthSecret
+		} else if *flagAuthSecret != "" {
+			authSecret = *flagAuthSecret
+		}
+
 		cfg = &Config{
 			RunAddress:      runAddr,
 			BaseURL:         baseURL,
 			FileStoragePath: fileStoragePath,
 			DBConnection:    dbConnection,
+			AuthSecret:      authSecret,
 		}
 	})
 }

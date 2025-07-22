@@ -72,3 +72,37 @@ func (r *InMemoryRepository) BatchSave(ctx context.Context, urls []StoredURL) er
 
 	return nil
 }
+
+func (r *InMemoryRepository) GetURLsByUserID(ctx context.Context, userID string) ([]StoredURL, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var result []StoredURL
+	for _, u := range r.data {
+		if u.UserID == userID {
+			result = append(result, u)
+		}
+	}
+	return result, nil
+}
+
+func (r *InMemoryRepository) MarkDeleted(ctx context.Context, userID string, ids []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	idSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idSet[id] = struct{}{}
+	}
+
+	for key, entry := range r.data {
+		if entry.UserID == userID {
+			if _, ok := idSet[entry.UUID]; ok {
+				entry.IsDeleted = true
+				r.data[key] = entry
+			}
+		}
+	}
+
+	return nil
+}

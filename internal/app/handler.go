@@ -3,6 +3,7 @@ package app
 import (
 	"crypto/rand"
 	"cuturl/internal/config"
+	"cuturl/internal/middleware"
 	"cuturl/internal/store"
 	"io"
 	"math/big"
@@ -14,6 +15,8 @@ import (
 	"errors"
 
 	"net/url"
+
+	"context"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -63,12 +66,13 @@ func (u *URLShortener) generateShorten(n int) string {
 	return string(b)
 }
 
-func (u *URLShortener) getOrCreateShortURL(originalURL string) (string, int, error) {
+func (u *URLShortener) getOrCreateShortURL(originalURL string, userId string) (string, int, error) {
 	shortID := u.generateShorten(8)
 	entry := store.StoredURL{
 		UUID:        shortID,
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
+		UserID:      userId,
 	}
 
 	err := u.repo.Save(entry)
@@ -102,8 +106,8 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		http.Error(res, "empty url", http.StatusBadRequest)
 		return
 	}
-
-	shortID, status, err := u.getOrCreateShortURL(origURL)
+	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
+	shortID, status, err := u.getOrCreateShortURL(origURL, userID)
 	if err != nil {
 		if status == http.StatusConflict {
 			u.logger.Errorf("failed to handle URL: URL exists %q: %v", origURL, err)
@@ -135,6 +139,11 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	if entry.IsDeleted {
+		res.WriteHeader(http.StatusGone)
+		return
+	}
+
 	res.Header().Set("Location", entry.OriginalURL)
 	res.WriteHeader(http.StatusTemporaryRedirect)
 }
@@ -152,8 +161,8 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 		http.Error(res, "Empty URL", http.StatusBadRequest)
 		return
 	}
-
-	shortID, status, err := u.getOrCreateShortURL(reqBody.URL)
+	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
+	shortID, status, err := u.getOrCreateShortURL(reqBody.URL, userID)
 	if err != nil {
 		if status == http.StatusConflict {
 			res.Header().Set("Content-Type", "application/json")
@@ -193,6 +202,8 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 	}
 	defer r.Body.Close()
 
+	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+
 	result := make([]BatchResponseItem, 0, len(batch))
 	entries := make([]store.StoredURL, 0, len(batch))
 
@@ -206,6 +217,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 			UUID:        shortID,
 			ShortURL:    shortID,
 			OriginalURL: item.OriginalURL,
+			UserID:      userID,
 		})
 		result = append(result, BatchResponseItem{
 			CorrelationID: item.CorrelationID,
@@ -229,4 +241,59 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		u.logger.Errorw("failed to encode response", "error", err)
 	}
+}
+
+func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	urls, err := u.repo.GetURLsByUserID(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resp := make([]map[string]string, 0, len(urls))
+	for _, entry := range urls {
+		shortURL, _ := url.JoinPath(config.Get().BaseURL, entry.ShortURL)
+		resp = append(resp, map[string]string{
+			"short_url":    shortURL,
+			"original_url": entry.OriginalURL,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+
+}
+
+func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil || len(ids) == 0 {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	go func() {
+		err := u.repo.MarkDeleted(context.Background(), userID, ids)
+		if err != nil {
+			u.logger.Errorf("async delete failed: %v", err)
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
 }
