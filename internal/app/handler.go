@@ -25,9 +25,10 @@ import (
 )
 
 type URLShortener struct {
-	letters []rune
-	logger  *zap.SugaredLogger
-	repo    store.Repository
+	letters     []rune
+	logger      *zap.SugaredLogger
+	repo        store.Repository
+	deleteQueue chan deleteJob
 }
 
 type Request struct {
@@ -46,13 +47,19 @@ type BatchResponseItem struct {
 	ShortURL      string `json:"short_url"`
 }
 
+type deleteJob struct {
+	userID string
+	ids    []string
+}
+
 func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShortener {
 	us := &URLShortener{
-		letters: []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
-		logger:  logger,
-		repo:    repo,
+		letters:     []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+		logger:      logger,
+		repo:        repo,
+		deleteQueue: make(chan deleteJob, 100),
 	}
-
+	go us.deletionWorker()
 	return us
 }
 
@@ -293,70 +300,35 @@ func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		const numWorkers = 5
-		const batchSize = 10
-
-		batchChan := make(chan []string, numWorkers)
-
-		resultChan := make(chan []string, numWorkers)
-
-		for i := 0; i < numWorkers; i++ {
-			go func() {
-				for batch := range batchChan {
-					select {
-					case resultChan <- batch:
-					case <-ctx.Done():
-						return
-					}
-				}
-			}()
-		}
-
-		go func() {
-			defer close(batchChan)
-
-			for i := 0; i < len(ids); i += batchSize {
-				end := i + batchSize
-				if end > len(ids) {
-					end = len(ids)
-				}
-
-				batch := make([]string, end-i)
-				copy(batch, ids[i:end])
-
-				select {
-				case batchChan <- batch:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-
-		var allProcessedIDs []string
-		expectedBatches := (len(ids) + batchSize - 1) / batchSize
-
-		for i := 0; i < expectedBatches; i++ {
-			select {
-			case batch := <-resultChan:
-				allProcessedIDs = append(allProcessedIDs, batch...)
-			case <-ctx.Done():
-				u.logger.Errorf("context cancelled during processing")
-				return
-			}
-		}
-
-		if len(allProcessedIDs) > 0 {
-			if err := u.repo.MarkDeleted(ctx, userID, allProcessedIDs); err != nil {
-				u.logger.Errorf("async delete failed: %v", err)
-			} else {
-				u.logger.Infof("URLs deleted: %d items", len(allProcessedIDs))
-			}
-		}
-	}()
+	select {
+	case u.deleteQueue <- deleteJob{userID: userID, ids: ids}:
+		w.WriteHeader(http.StatusAccepted)
+	default:
+		http.Error(w, "server busy", http.StatusServiceUnavailable)
+	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (u *URLShortener) deletionWorker() {
+	batch := make(map[string][]string)
+	ticker := time.NewTicker(500 * time.Millisecond)
+
+	for {
+		select {
+		case job := <-u.deleteQueue:
+			batch[job.userID] = append(batch[job.userID], job.ids...)
+
+		case <-ticker.C:
+			for userID, ids := range batch {
+				go func(uid string, urlIDs []string) {
+					ctx := context.Background()
+					if err := u.repo.MarkDeleted(ctx, uid, urlIDs); err != nil {
+						u.logger.Errorf("batch delete failed for user %s: %v", uid, err)
+					}
+				}(userID, ids)
+			}
+			batch = make(map[string][]string)
+		}
+	}
 }
