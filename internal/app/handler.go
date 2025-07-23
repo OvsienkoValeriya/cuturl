@@ -20,6 +20,8 @@ import (
 
 	"time"
 
+	"cuturl/internal/service"
+
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
@@ -28,6 +30,7 @@ type URLShortener struct {
 	letters []rune
 	logger  *zap.SugaredLogger
 	repo    store.Repository
+	service *service.URLService
 }
 
 type Request struct {
@@ -51,6 +54,7 @@ func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShort
 		letters: []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
 		logger:  logger,
 		repo:    repo,
+		service: service.NewURLService(repo),
 	}
 	return us
 }
@@ -67,7 +71,7 @@ func (u *URLShortener) generateShorten(n int) string {
 	return string(b)
 }
 
-func (u *URLShortener) getOrCreateShortURL(originalURL string, userID string) (string, int, error) {
+func (u *URLShortener) getOrCreateShortURL(ctx context.Context, originalURL string, userID string) (string, int, error) {
 	shortID := u.generateShorten(8)
 	entry := store.StoredURL{
 		UUID:        shortID,
@@ -76,13 +80,13 @@ func (u *URLShortener) getOrCreateShortURL(originalURL string, userID string) (s
 		UserID:      userID,
 	}
 
-	err := u.repo.Save(entry)
+	err := u.service.SaveURL(ctx, entry)
 	if err == nil {
 		return shortID, http.StatusCreated, nil
 	}
 
 	if errors.Is(err, store.ErrUniqueViolation) {
-		existing, findErr := u.repo.FindByOriginalURL(originalURL)
+		existing, findErr := u.service.GetByOriginalURL(ctx, originalURL)
 		if findErr != nil || existing == nil {
 			return "", http.StatusInternalServerError, findErr
 		}
@@ -93,6 +97,7 @@ func (u *URLShortener) getOrCreateShortURL(originalURL string, userID string) (s
 }
 
 func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	defer req.Body.Close()
 	body, err := io.ReadAll(req.Body)
 	if err != nil || len(body) == 0 {
@@ -107,9 +112,9 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 		http.Error(res, "empty url", http.StatusBadRequest)
 		return
 	}
-	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
-	shortID, status, err := u.getOrCreateShortURL(origURL, userID)
+	shortID, status, err := u.getOrCreateShortURL(ctx, origURL, userID)
 	if err != nil {
 		if status == http.StatusConflict {
 			u.logger.Errorf("failed to handle URL: URL exists %q: %v", origURL, err)
@@ -128,13 +133,14 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 }
 
 func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	id := chi.URLParam(req, "id")
 	if id == "" {
 		http.Error(res, "missing id", http.StatusBadRequest)
 		return
 	}
 
-	entry, err := u.repo.FindByShortID(id)
+	entry, err := u.service.GetByShortID(ctx, id)
 	if err != nil {
 		u.logger.Errorf("failed to find short ID: %v", err)
 		http.Error(res, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -151,6 +157,7 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 }
 
 func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	var reqBody Request
 	if err := json.NewDecoder(req.Body).Decode(&reqBody); err != nil {
 		http.Error(res, "Invalid JSON format", http.StatusBadRequest)
@@ -163,9 +170,9 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 		http.Error(res, "Empty URL", http.StatusBadRequest)
 		return
 	}
-	userID, _ := req.Context().Value(middleware.UserIDKey).(string)
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
-	shortID, status, err := u.getOrCreateShortURL(reqBody.URL, userID)
+	shortID, status, err := u.getOrCreateShortURL(ctx, reqBody.URL, userID)
 	if err != nil {
 		if status == http.StatusConflict {
 			res.Header().Set("Content-Type", "application/json")
@@ -198,6 +205,7 @@ func (u *URLShortener) PingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var batch []BatchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&batch); err != nil || len(batch) == 0 {
 		http.Error(w, "invalid batch", http.StatusBadRequest)
@@ -205,7 +213,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 	}
 	defer r.Body.Close()
 
-	userID, _ := r.Context().Value(middleware.UserIDKey).(string)
+	userID, _ := ctx.Value(middleware.UserIDKey).(string)
 
 	result := make([]BatchResponseItem, 0, len(batch))
 	entries := make([]store.StoredURL, 0, len(batch))
@@ -233,7 +241,7 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := u.repo.BatchSave(r.Context(), entries); err != nil {
+	if err := u.service.BatchSave(ctx, entries); err != nil {
 		u.logger.Errorf("batch save failed: %v", err)
 		http.Error(w, "could not save batch", http.StatusInternalServerError)
 		return
@@ -247,13 +255,14 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	ctx := r.Context()
+	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
-	urls, err := u.repo.GetURLsByUserID(r.Context(), userID)
+	urls, err := u.service.GetUserURLs(ctx, userID)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -280,7 +289,8 @@ func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	ctx := r.Context()
+	userID, ok := ctx.Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
@@ -295,7 +305,7 @@ func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Requ
 	go func(ids []string, userID string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := u.repo.MarkDeleted(ctx, userID, ids); err != nil {
+		if err := u.service.MarkDeleted(ctx, userID, ids); err != nil {
 			u.logger.Errorf("failed to mark deleted: %v", err)
 		}
 	}(ids, userID)
