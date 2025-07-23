@@ -117,7 +117,7 @@ func (u *URLShortener) OrigURLHandler(res http.ResponseWriter, req *http.Request
 			return
 		}
 		u.logger.Errorf("failed to save or find url: %v", err)
-		http.Error(res, "internal error", http.StatusInternalServerError)
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
@@ -137,7 +137,7 @@ func (u *URLShortener) ShortURLHandler(res http.ResponseWriter, req *http.Reques
 	entry, err := u.repo.FindByShortID(id)
 	if err != nil {
 		u.logger.Errorf("failed to find short ID: %v", err)
-		http.Error(res, "not found", http.StatusNotFound)
+		http.Error(res, http.StatusText(http.StatusNotFound), http.StatusNotFound)
 		return
 	}
 
@@ -174,7 +174,7 @@ func (u *URLShortener) OrigURLJSONHandler(res http.ResponseWriter, req *http.Req
 			return
 		}
 		u.logger.Errorf("failed to save or find url: %v", err)
-		http.Error(res, "internal error", http.StatusInternalServerError)
+		http.Error(res, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	shortURL, _ := url.JoinPath(config.Get().BaseURL, shortID)
@@ -249,13 +249,13 @@ func (u *URLShortener) ShortenBatchHandler(w http.ResponseWriter, r *http.Reques
 func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
 	urls, err := u.repo.GetURLsByUserID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -282,7 +282,7 @@ func (u *URLShortener) UserURLsHandler(w http.ResponseWriter, r *http.Request) {
 func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
 	if !ok || userID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 

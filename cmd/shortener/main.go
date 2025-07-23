@@ -59,11 +59,17 @@ func main() {
 	r.Use(middleware.AuthMiddleware)
 	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
 	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
-	r.Post("/api/shorten", http.HandlerFunc(u.OrigURLJSONHandler))
 	r.Get("/ping", http.HandlerFunc(u.PingHandler))
-	r.Post("/api/shorten/batch", http.HandlerFunc(u.ShortenBatchHandler))
-	r.Get("/api/user/urls", http.HandlerFunc(u.UserURLsHandler))
-	r.Delete("/api/user/urls", http.HandlerFunc(u.DeleteUserURLSHandler))
+
+	r.Route("/api/shorten", func(r chi.Router) {
+		r.Post("/", http.HandlerFunc(u.OrigURLJSONHandler))
+		r.Post("/batch", http.HandlerFunc(u.ShortenBatchHandler))
+	})
+
+	r.Route("/api/user", func(r chi.Router) {
+		r.Get("/urls", http.HandlerFunc(u.UserURLsHandler))
+		r.Delete("/urls", http.HandlerFunc(u.DeleteUserURLSHandler))
+	})
 
 	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
 		log.Fatalf("server failed to start: %v", err)
