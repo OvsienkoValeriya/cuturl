@@ -18,8 +18,6 @@ import (
 
 	"context"
 
-	"time"
-
 	"cuturl/internal/service"
 
 	"github.com/go-chi/chi/v5"
@@ -54,7 +52,7 @@ func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShort
 		letters: []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
 		logger:  logger,
 		repo:    repo,
-		service: service.NewURLService(repo),
+		service: service.NewURLService(repo, logger),
 	}
 	return us
 }
@@ -302,13 +300,7 @@ func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	go func(ids []string, userID string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		if err := u.service.MarkDeleted(ctx, userID, ids); err != nil {
-			u.logger.Errorf("failed to mark deleted: %v", err)
-		}
-	}(ids, userID)
+	u.service.MarkDeletedAsync(userID, ids)
 
 	w.WriteHeader(http.StatusAccepted)
 }

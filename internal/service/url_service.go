@@ -3,14 +3,18 @@ package service
 import (
 	"context"
 	"cuturl/internal/store"
+	"time"
+
+	"go.uber.org/zap"
 )
 
 type URLService struct {
-	repo store.Repository
+	repo   store.Repository
+	logger *zap.SugaredLogger
 }
 
-func NewURLService(repo store.Repository) *URLService {
-	return &URLService{repo: repo}
+func NewURLService(repo store.Repository, logger *zap.SugaredLogger) *URLService {
+	return &URLService{repo: repo, logger: logger}
 }
 
 func (s *URLService) SaveURL(ctx context.Context, url store.StoredURL) error {
@@ -35,4 +39,15 @@ func (s *URLService) MarkDeleted(ctx context.Context, userID string, ids []strin
 
 func (s *URLService) BatchSave(ctx context.Context, urls []store.StoredURL) error {
 	return s.repo.BatchSave(ctx, urls)
+}
+
+func (s *URLService) MarkDeletedAsync(userID string, ids []string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := s.repo.MarkDeleted(ctx, userID, ids); err != nil {
+			s.logger.Errorf("failed to mark deleted: %v", err)
+		}
+	}()
 }
