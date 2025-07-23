@@ -2,6 +2,7 @@ package main
 
 import (
 	"cuturl/internal/app"
+	"cuturl/internal/auth"
 	"cuturl/internal/config"
 	"cuturl/internal/middleware"
 	"cuturl/internal/store"
@@ -48,16 +49,27 @@ func main() {
 		log.Println("Using Memory as storage")
 	}
 
+	auth.Init(cfg.AuthSecret)
+
 	u := app.NewURLShortener(sugar, repo)
 	r := chi.NewRouter()
 	r.Use(middleware.LoggingMiddleware(sugar))
 	r.Use(middleware.GzipCompressMiddleware)
 	r.Use(middleware.GzipDecompressMiddleware)
+	r.Use(middleware.AuthMiddleware)
 	r.Post("/", http.HandlerFunc(u.OrigURLHandler))
 	r.Get("/{id}", http.HandlerFunc(u.ShortURLHandler))
-	r.Post("/api/shorten", http.HandlerFunc(u.OrigURLJSONHandler))
 	r.Get("/ping", http.HandlerFunc(u.PingHandler))
-	r.Post("/api/shorten/batch", http.HandlerFunc(u.ShortenBatchHandler))
+
+	r.Route("/api/shorten", func(r chi.Router) {
+		r.Post("/", http.HandlerFunc(u.OrigURLJSONHandler))
+		r.Post("/batch", http.HandlerFunc(u.ShortenBatchHandler))
+	})
+
+	r.Route("/api/user", func(r chi.Router) {
+		r.Get("/urls", http.HandlerFunc(u.UserURLsHandler))
+		r.Delete("/urls", http.HandlerFunc(u.DeleteUserURLSHandler))
+	})
 
 	if err := http.ListenAndServe(cfg.RunAddress, r); err != nil {
 		log.Fatalf("server failed to start: %v", err)

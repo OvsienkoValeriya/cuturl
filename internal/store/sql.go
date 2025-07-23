@@ -26,7 +26,9 @@ func NewPostgresRepository(dsn string) (Repository, error) {
 CREATE TABLE IF NOT EXISTS urls (
     uuid TEXT PRIMARY KEY,
     short_url TEXT NOT NULL,
-    original_url TEXT NOT NULL UNIQUE
+    original_url TEXT NOT NULL UNIQUE,
+	user_id TEXT,
+	is_deleted BOOLEAN NOT NULL DEFAULT false
 );`
 	_, err = db.Exec(schema)
 	if err != nil {
@@ -78,8 +80,8 @@ func (r *SQLRepository) Load() ([]StoredURL, error) {
 
 func (r *SQLRepository) Save(entry StoredURL) error {
 	queryBuilder := sq.Insert("urls").
-		Columns("uuid", "short_url", "original_url").
-		Values(entry.UUID, entry.ShortURL, entry.OriginalURL).
+		Columns("uuid", "short_url", "original_url", "user_id").
+		Values(entry.UUID, entry.ShortURL, entry.OriginalURL, entry.UserID).
 		PlaceholderFormat(sq.Dollar)
 
 	query, args, err := queryBuilder.ToSql()
@@ -99,7 +101,7 @@ func (r *SQLRepository) Save(entry StoredURL) error {
 
 func (r *SQLRepository) FindByShortID(id string) (*StoredURL, error) {
 	queryBuilder := sq.
-		Select("uuid", "short_url", "original_url").
+		Select("uuid", "short_url", "original_url", "is_deleted").
 		From("urls").
 		Where(sq.Eq{"short_url": id}).
 		Limit(1).
@@ -147,7 +149,7 @@ func (r *SQLRepository) BatchSave(ctx context.Context, urls []StoredURL) error {
 	}
 	defer tx.Rollback()
 
-	stmtStr := "INSERT INTO urls (uuid, short_url, original_url) VALUES ($1, $2, $3)"
+	stmtStr := "INSERT INTO urls (uuid, short_url, original_url, user_id) VALUES ($1, $2, $3, $4)"
 	stmt, err := tx.PrepareContext(ctx, stmtStr)
 	if err != nil {
 		return err
@@ -155,7 +157,7 @@ func (r *SQLRepository) BatchSave(ctx context.Context, urls []StoredURL) error {
 	defer stmt.Close()
 
 	for _, u := range urls {
-		if _, err := stmt.ExecContext(ctx, u.UUID, u.ShortURL, u.OriginalURL); err != nil {
+		if _, err := stmt.ExecContext(ctx, u.UUID, u.ShortURL, u.OriginalURL, u.UserID); err != nil {
 			if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == pgerrcode.UniqueViolation {
 				return ErrUniqueViolation
 			}
@@ -164,4 +166,59 @@ func (r *SQLRepository) BatchSave(ctx context.Context, urls []StoredURL) error {
 	}
 
 	return tx.Commit()
+}
+
+func (r *SQLRepository) GetURLsByUserID(ctx context.Context, userID string) ([]StoredURL, error) {
+	queryBuilder := sq.
+		Select("short_url", "original_url").
+		From("urls").
+		Where(sq.Eq{"user_id": userID}).
+		PlaceholderFormat(sq.Dollar)
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []StoredURL
+	for rows.Next() {
+		var u StoredURL
+		if err := rows.Scan(&u.ShortURL, &u.OriginalURL); err != nil {
+			return nil, err
+		}
+		res = append(res, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (r *SQLRepository) MarkDeleted(ctx context.Context, userID string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	queryBuilder := sq.
+		Update("urls").
+		Set("is_deleted", true).
+		Where(sq.Eq{"user_id": userID}).
+		Where(sq.Eq{"short_url": ids}).
+		PlaceholderFormat(sq.Dollar)
+
+	query, args, err := queryBuilder.ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.ExecContext(ctx, query, args...)
+
+	return err
 }
