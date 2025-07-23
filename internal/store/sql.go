@@ -103,7 +103,7 @@ func (r *SQLRepository) FindByShortID(id string) (*StoredURL, error) {
 	queryBuilder := sq.
 		Select("uuid", "short_url", "original_url", "is_deleted").
 		From("urls").
-		Where(sq.Eq{"short_url": id, "is_deleted": false}).
+		Where(sq.Eq{"short_url": id}).
 		Limit(1).
 		PlaceholderFormat(sq.Dollar)
 

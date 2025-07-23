@@ -25,10 +25,9 @@ import (
 )
 
 type URLShortener struct {
-	letters     []rune
-	logger      *zap.SugaredLogger
-	repo        store.Repository
-	deleteQueue chan deleteJob
+	letters []rune
+	logger  *zap.SugaredLogger
+	repo    store.Repository
 }
 
 type Request struct {
@@ -47,19 +46,12 @@ type BatchResponseItem struct {
 	ShortURL      string `json:"short_url"`
 }
 
-type deleteJob struct {
-	userID string
-	ids    []string
-}
-
 func NewURLShortener(logger *zap.SugaredLogger, repo store.Repository) *URLShortener {
 	us := &URLShortener{
-		letters:     []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
-		logger:      logger,
-		repo:        repo,
-		deleteQueue: make(chan deleteJob, 100),
+		letters: []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"),
+		logger:  logger,
+		repo:    repo,
 	}
-	go us.deletionWorker()
 	return us
 }
 
@@ -300,35 +292,13 @@ func (u *URLShortener) DeleteUserURLSHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	select {
-	case u.deleteQueue <- deleteJob{userID: userID, ids: ids}:
-		w.WriteHeader(http.StatusAccepted)
-	default:
-		http.Error(w, "server busy", http.StatusServiceUnavailable)
-	}
+	go func(ids []string, userID string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := u.repo.MarkDeleted(ctx, userID, ids); err != nil {
+			u.logger.Errorf("failed to mark deleted: %v", err)
+		}
+	}(ids, userID)
 
 	w.WriteHeader(http.StatusAccepted)
-}
-
-func (u *URLShortener) deletionWorker() {
-	batch := make(map[string][]string)
-	ticker := time.NewTicker(500 * time.Millisecond)
-
-	for {
-		select {
-		case job := <-u.deleteQueue:
-			batch[job.userID] = append(batch[job.userID], job.ids...)
-
-		case <-ticker.C:
-			for userID, ids := range batch {
-				go func(uid string, urlIDs []string) {
-					ctx := context.Background()
-					if err := u.repo.MarkDeleted(ctx, uid, urlIDs); err != nil {
-						u.logger.Errorf("batch delete failed for user %s: %v", uid, err)
-					}
-				}(userID, ids)
-			}
-			batch = make(map[string][]string)
-		}
-	}
 }
